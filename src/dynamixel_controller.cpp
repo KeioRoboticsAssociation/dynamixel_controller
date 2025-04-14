@@ -15,7 +15,7 @@
 
 // 接続情報のマクロ（必要に応じて調整）
 #define BAUDRATE 9600
-#define DEVICE_NAME "/dev/ttyUSB"
+#define DEVICE_NAME "/dev/ttyUSB0"
 
 // メッセージ定義のショートカット
 #define MSG dynamixel_controller::msg::DynamixelController
