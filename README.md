@@ -36,30 +36,37 @@ dynamixel_controller は、Dynamixel アクチュエータとの通信を行う�
 ＜手順＞
 1. ROS 2 ワークスペースの src フォルダに本パッケージを配置またはクローンします。
    例)
+   ``` bash
      cd ~/ros2_ws/src
      git clone <repository_url> dynamixel_controller
+    ```
 
 2. ワークスペースのルートに移動し、パッケージをビルドします。
    例)
+   ``` bash
      cd ~/ros2_ws
      colcon build --packages-select dynamixel_controller
+    ```
 
 3. ビルド完了後、以下のコマンドで環境をセットアップしてください。
+    ``` bash
      source install/local_setup.bash
+    ```
 
 【実行方法】
 
 ＜C++ ノードの起動＞
 dynamixel_controller ノードは、実行可能ファイル "dynamixel_controller_node" として生成されます。
 下記のコマンドで起動してください：
+    ``` bash
      ros2 run dynamixel_controller dynamixel_controller_node
-
+    ```
 ＜Python クライアントの利用例＞
 下記のサンプルは、Python ノードから C++ ノードに対して命令を送信する例です。
 この例では、5秒ごとに SYNC_READ 命令（例：2 台の Dynamixel の PRESENT_POSITION を4バイトずつ要求）を送信し、応答を受信します。
 
 【Python サンプルコード例】
-
+``` Python
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
@@ -106,17 +113,21 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+```
 
 ＜実行方法＞
 1. 環境を source した上で実行してください。
    例)
+   ``` bash
      source install/local_setup.bash
      python3 <client_node_script.py>
+    ```
 
 【メッセージ定義】
 
 DynamixelController.msg ファイルには、以下の定数が定義されています（例）。
 
+    ``` .msg
      uint8 PING = 1
      uint8 READ_DATA = 2
      uint8 WRITE_DATA = 3
@@ -127,6 +138,7 @@ DynamixelController.msg ファイルには、以下の定数が定義されて�
      uint8 SYNC_READ = 130
      uint8 SYNC_WRITE = 131
      // その他の定数（各種アドレスなど）を追加
+     ```
 
 自動生成された C++ ヘッダーや Python モジュールから、以下のようにインポートして利用できます。
 
