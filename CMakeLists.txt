@@ -9,20 +9,16 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(dynamixel_sdk REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(dynamixel_sdk REQUIRED)
 
-# ヘッダー用インクルードディレクトリを指定
+# インクルードディレクトリの設定
 include_directories(
   include
-  ${dynamixel_sdk_INCLUDE_DIRS}  # dynamixel_sdk のインクルードディレクトリが設定されていれば利用
+  ${dynamixel_sdk_INCLUDE_DIRS}
 )
 
-# 実行ファイルの作成
-add_executable(dynamixel_controller
-  src/dynamixel_controller.cpp
-)
-
+# メッセージファイル設定
 set(msg_files
   "msg/DynamixelController.msg"
 )
@@ -31,27 +27,24 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
   DEPENDENCIES std_msgs
 )
-# 依存関係の設定
-ament_target_dependencies(dynamixel_controller
+
+# 実行可能ターゲット名を変更して衝突を回避する
+add_executable(dynamixel_controller_node
+  src/dynamixel_controller.cpp
+)
+
+ament_target_dependencies(dynamixel_controller_node
   rclcpp
   std_msgs
   dynamixel_sdk
 )
 
-# ※必要に応じて明示的にライブラリをリンクする場合は以下のように設定
-# target_link_libraries(dynamixel_controller ${dynamixel_sdk_LIBRARIES})
+# 自動生成されたメッセージのためのリンク設定
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(dynamixel_controller_node ${cpp_typesupport_target})
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # 以下、ライセンス関連チェックをスキップする場合の設定例
-  set(ament_cmake_copyright_FOUND TRUE)
-  set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-# install 設定（実行ファイルをインストールするパス）
 install(TARGETS
-  dynamixel_controller
+  dynamixel_controller_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
