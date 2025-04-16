@@ -20,6 +20,46 @@
 // メッセージ定義のショートカット
 #define MSG dynamixel_controller::msg::DynamixelController
 
+// 例示用：エスケープ処理対象のヘッダーシーケンス
+// ※この内容はプロトコルに合わせて変更してください。
+static const std::vector<uint8_t> header_sequence = {0x01, 0x02};
+
+//--------------------------------------------------------------------
+// Escape function: Parameter 部中に header_sequence と一致するシーケンスが現れた場合
+// その末尾に 0xFD を1バイト追加する
+std::vector<uint8_t> escapeData(const std::vector<uint8_t>& data)
+{
+    std::vector<uint8_t> escaped;
+    size_t i = 0;
+    while (i < data.size()) {
+        bool match = false;
+        if (i + header_sequence.size() <= data.size()) {
+            match = true;
+            for (size_t j = 0; j < header_sequence.size(); j++) {
+                if (data[i+j] != header_sequence[j]) {
+                    match = false;
+                    break;
+                }
+            }
+        }
+        if (match) {
+            // ヘッダーシーケンスそのものをコピー
+            for (size_t j = 0; j < header_sequence.size(); j++) {
+                escaped.push_back(data[i+j]);
+            }
+            // その末尾に 0xFD を追加
+            escaped.push_back(0xFD);
+            i += header_sequence.size();
+        } else {
+            // ヘッダーと一致しない場合はそのままコピー
+            escaped.push_back(data[i]);
+            i++;
+        }
+    }
+    return escaped;
+}
+//--------------------------------------------------------------------
+
 DynamixelController::DynamixelController() : Node("dynamixel_controller") {
     RCLCPP_INFO(this->get_logger(), "DynamixelController node started.");
 
@@ -56,11 +96,15 @@ DynamixelController::~DynamixelController() {
     // packet_handler_ はシングルトンのため、削除不要の場合があります。
 }
 
+// 修正：送信前に escapeData を実行して、ヘッダーシーケンスと一致する部分をエスケープする
 void DynamixelController::publish_response(uint8_t instruction_code, const std::vector<uint8_t> & response) {
     std_msgs::msg::UInt8MultiArray msg;
     // 応答メッセージの先頭に命令コードを入れる
     msg.data.push_back(instruction_code);
-    msg.data.insert(msg.data.end(), response.begin(), response.end());
+    // パラメータ部に対してエスケープ処理を実施
+    std::vector<uint8_t> escaped_response = escapeData(response);
+    // 必要に応じて、Length や Checksum の再計算もここで行う（本例では割愛）
+    msg.data.insert(msg.data.end(), escaped_response.begin(), escaped_response.end());
     response_publisher_->publish(msg);
 }
 
@@ -77,7 +121,6 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
 
     switch (instr) {
         case MSG::PING: {
-            // PING 命令：モデルナンバーの取得
             uint16_t model_number = 0;
             comm_result = packet_handler_->ping(port_handler_, dxl_id_, &model_number, &dxl_error);
             if (comm_result != COMM_SUCCESS) {
@@ -91,7 +134,6 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
             break;
         }
         case MSG::READ_DATA: {
-            // READ_DATA 命令：指定アドレス・データ長の読み出し
             if (msg->data.size() < 3) {
                 RCLCPP_ERROR(this->get_logger(), "READ_DATA instruction requires address and length.");
                 break;
@@ -136,7 +178,6 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
             break;
         }
         case MSG::WRITE_DATA: {
-            // WRITE_DATA 命令：データ書き込み
             if (msg->data.size() < 3) {
                 RCLCPP_ERROR(this->get_logger(), "WRITE_DATA instruction requires address and data.");
                 break;
@@ -179,9 +220,6 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
             break;
         }
         case MSG::SYNC_READ: {
-            // SYNC_READ 命令:
-            // メッセージフォーマット:
-            // [SYNC_READ, start_address, data_length, id1, id2, ...]
             if (msg->data.size() < 4) {
                 RCLCPP_ERROR(this->get_logger(), "SYNC_READ instruction requires start_address, data_length, and at least one ID.");
                 break;
@@ -192,38 +230,32 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
             for (size_t i = 3; i < msg->data.size(); i++) {
                 id_list.push_back(msg->data[i]);
             }
-            // GroupSyncRead オブジェクトの生成
             dynamixel::GroupSyncRead groupSyncRead(port_handler_, packet_handler_, start_address, data_length);
-            // 各 ID のパラメータを追加
             for (auto id : id_list) {
                 if (!groupSyncRead.addParam(id)) {
                     RCLCPP_ERROR(this->get_logger(), "Failed to add param for ID: %d", id);
                 }
             }
-            // 同期読み出し命令の実行
             comm_result = groupSyncRead.txRxPacket();
             if (comm_result != COMM_SUCCESS) {
                 RCLCPP_ERROR(this->get_logger(), "SYNC_READ failed: %s", packet_handler_->getTxRxResult(comm_result));
             } else {
-                // 各 ID からデータを取得して応答データに追加
                 for (auto id : id_list) {
                     if (groupSyncRead.isAvailable(id, start_address, data_length)) {
-                        for (uint8_t offset = 0; offset < data_length; offset++) {
-                            uint8_t data = groupSyncRead.getData(id, start_address, offset);
-                            response_data.push_back(data);
+                        uint32_t data = groupSyncRead.getData(id, start_address, data_length);
+                        for (uint8_t i=0; i<data_length; i++){
+                            response_data.push_back(static_cast<uint8_t>((data >> i*8) & 0xFF));
                         }
                     } else {
                         RCLCPP_ERROR(this->get_logger(), "SYNC_READ data not available for ID: %d", id);
                     }
                 }
+                // RCLCPP_INFO(this->get_logger(), "SyncData: %u, %u, %u, %u", response_data[0], response_data[1], response_data[2], response_data[3]);
                 publish_response(instr, response_data);
             }
             break;
         }
         case MSG::SYNC_WRITE: {
-            // SYNC_WRITE 命令:
-            // メッセージフォーマット:
-            // [SYNC_WRITE, start_address, data_length, id1, data_bytes..., id2, data_bytes..., ...]
             if (msg->data.size() < 3) {
                 RCLCPP_ERROR(this->get_logger(), "SYNC_WRITE instruction requires start_address, data_length, and data.");
                 break;
