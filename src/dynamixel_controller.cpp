@@ -14,7 +14,7 @@
 #include "dynamixel_controller/msg/dynamixel_controller.hpp"
 
 // 接続情報のマクロ（必要に応じて調整）
-#define BAUDRATE 57600
+#define BAUDRATE 1000000
 #define DEVICE_NAME "/dev/ttyUSB0"
 
 // メッセージ定義のショートカット
@@ -260,6 +260,7 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
                 RCLCPP_ERROR(this->get_logger(), "SYNC_WRITE instruction requires start_address, data_length, and data.");
                 break;
             }
+            RCLCPP_INFO(this->get_logger(), "success.");
             uint8_t start_address = msg->data[1];
             uint8_t data_length = msg->data[2];
             size_t expected_length = msg->data.size() - 3;
