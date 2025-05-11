@@ -82,7 +82,7 @@ DynamixelController::DynamixelController() : Node("dynamixel_controller") {
 
     // ROS2 サブスクライバーの作成 (送信用命令を受け付ける)
     instruction_subscriber_ = this->create_subscription<std_msgs::msg::UInt8MultiArray>(
-        "dynamixel_tx", 10,
+        "dynamixel_tx", 100,
         std::bind(&DynamixelController::instruction_callback, this, std::placeholders::_1));
 
     // ROS2 パブリッシャーの作成 (受信応答を publish する)
@@ -224,6 +224,7 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
                 RCLCPP_ERROR(this->get_logger(), "SYNC_READ instruction requires start_address, data_length, and at least one ID.");
                 break;
             }
+            RCLCPP_INFO(this->get_logger(), "success2");
             uint8_t start_address = msg->data[1];
             uint8_t data_length = msg->data[2];
             std::vector<uint8_t> id_list;
