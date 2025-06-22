@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
@@ -28,6 +29,10 @@ private:
     // Dynamixel SDK 用オブジェクト
     dynamixel::PortHandler   *port_handler_;
     dynamixel::PacketHandler *packet_handler_;
+
+    // Bus configuration
+    std::unordered_set<uint8_t> ttl_ids_;
+    std::unordered_set<uint8_t> rs485_ids_;
 
     // デバイスパラメータ（例：モータID、プロトコルバージョン）
     const int dxl_id_ = 1;

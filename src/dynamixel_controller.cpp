@@ -6,6 +6,7 @@
 #include "dynamixel_sdk/dynamixel_sdk.h"
 #include "dynamixel_sdk/group_sync_read.h"
 #include "dynamixel_sdk/group_sync_write.h"
+#include <unordered_map>
 #include "rclcpp/rclcpp.hpp"
 #include "rcutils/cmdline_parser.h"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
@@ -79,6 +80,20 @@ DynamixelController::DynamixelController() : Node("dynamixel_controller") {
     }
 
     packet_handler_ = dynamixel::PacketHandler::getPacketHandler(protocol_version_);
+
+    // Load bus configuration from parameters
+    std::vector<int64_t> ttl_param;
+    std::vector<int64_t> rs485_param;
+    this->declare_parameter("ttl_ids", ttl_param);
+    this->declare_parameter("rs485_ids", rs485_param);
+    this->get_parameter("ttl_ids", ttl_param);
+    this->get_parameter("rs485_ids", rs485_param);
+    for (auto id : ttl_param) {
+        ttl_ids_.insert(static_cast<uint8_t>(id));
+    }
+    for (auto id : rs485_param) {
+        rs485_ids_.insert(static_cast<uint8_t>(id));
+    }
 
     // ROS2 サブスクライバーの作成 (送信用命令を受け付ける)
     instruction_subscriber_ = this->create_subscription<std_msgs::msg::UInt8MultiArray>(
@@ -224,36 +239,83 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
                 RCLCPP_ERROR(this->get_logger(), "SYNC_READ instruction requires start_address, data_length, and at least one ID.");
                 break;
             }
-            RCLCPP_INFO(this->get_logger(), "success2");
             uint8_t start_address = msg->data[1];
             uint8_t data_length = msg->data[2];
             std::vector<uint8_t> id_list;
             for (size_t i = 3; i < msg->data.size(); i++) {
                 id_list.push_back(msg->data[i]);
             }
-            dynamixel::GroupSyncRead groupSyncRead(port_handler_, packet_handler_, start_address, data_length);
+            std::vector<uint8_t> ttl_targets;
+            std::vector<uint8_t> rs_targets;
             for (auto id : id_list) {
-                if (!groupSyncRead.addParam(id)) {
-                    RCLCPP_ERROR(this->get_logger(), "Failed to add param for ID: %d", id);
+                if (rs485_ids_.count(id)) {
+                    rs_targets.push_back(id);
+                } else {
+                    ttl_targets.push_back(id);
                 }
             }
-            comm_result = groupSyncRead.txRxPacket();
-            if (comm_result != COMM_SUCCESS) {
-                RCLCPP_ERROR(this->get_logger(), "SYNC_READ failed: %s", packet_handler_->getTxRxResult(comm_result));
-            } else {
-                for (auto id : id_list) {
-                    if (groupSyncRead.isAvailable(id, start_address, data_length)) {
-                        uint32_t data = groupSyncRead.getData(id, start_address, data_length);
-                        for (uint8_t i=0; i<data_length; i++){
-                            response_data.push_back(static_cast<uint8_t>((data >> i*8) & 0xFF));
-                        }
-                    } else {
-                        RCLCPP_ERROR(this->get_logger(), "SYNC_READ data not available for ID: %d", id);
+
+            std::unordered_map<uint8_t, std::vector<uint8_t>> data_map;
+            if (!ttl_targets.empty()) {
+                dynamixel::GroupSyncRead ttlRead(port_handler_, packet_handler_, start_address, data_length);
+                for (auto id : ttl_targets) {
+                    if (!ttlRead.addParam(id)) {
+                        RCLCPP_ERROR(this->get_logger(), "Failed to add TTL param for ID: %d", id);
                     }
                 }
-                // RCLCPP_INFO(this->get_logger(), "SyncData: %u, %u, %u, %u", response_data[0], response_data[1], response_data[2], response_data[3]);
-                publish_response(instr, response_data);
+                comm_result = ttlRead.txRxPacket();
+                if (comm_result != COMM_SUCCESS) {
+                    RCLCPP_ERROR(this->get_logger(), "SYNC_READ TTL failed: %s", packet_handler_->getTxRxResult(comm_result));
+                } else {
+                    for (auto id : ttl_targets) {
+                        if (ttlRead.isAvailable(id, start_address, data_length)) {
+                            uint32_t data = ttlRead.getData(id, start_address, data_length);
+                            std::vector<uint8_t> bytes;
+                            for (uint8_t i = 0; i < data_length; i++) {
+                                bytes.push_back(static_cast<uint8_t>((data >> (i*8)) & 0xFF));
+                            }
+                            data_map[id] = bytes;
+                        } else {
+                            RCLCPP_ERROR(this->get_logger(), "TTL SYNC_READ data not available for ID: %d", id);
+                        }
+                    }
+                }
             }
+
+            if (!rs_targets.empty()) {
+                dynamixel::GroupSyncRead rsRead(port_handler_, packet_handler_, start_address, data_length);
+                for (auto id : rs_targets) {
+                    if (!rsRead.addParam(id)) {
+                        RCLCPP_ERROR(this->get_logger(), "Failed to add RS485 param for ID: %d", id);
+                    }
+                }
+                comm_result = rsRead.txRxPacket();
+                if (comm_result != COMM_SUCCESS) {
+                    RCLCPP_ERROR(this->get_logger(), "SYNC_READ RS485 failed: %s", packet_handler_->getTxRxResult(comm_result));
+                } else {
+                    for (auto id : rs_targets) {
+                        if (rsRead.isAvailable(id, start_address, data_length)) {
+                            uint32_t data = rsRead.getData(id, start_address, data_length);
+                            std::vector<uint8_t> bytes;
+                            for (uint8_t i = 0; i < data_length; i++) {
+                                bytes.push_back(static_cast<uint8_t>((data >> (i*8)) & 0xFF));
+                            }
+                            data_map[id] = bytes;
+                        } else {
+                            RCLCPP_ERROR(this->get_logger(), "RS485 SYNC_READ data not available for ID: %d", id);
+                        }
+                    }
+                }
+            }
+
+            for (auto id : id_list) {
+                auto it = data_map.find(id);
+                if (it != data_map.end()) {
+                    response_data.insert(response_data.end(), it->second.begin(), it->second.end());
+                }
+            }
+
+            publish_response(instr, response_data);
             break;
         }
         case MSG::SYNC_WRITE: {
@@ -270,26 +332,47 @@ void DynamixelController::instruction_callback(const std_msgs::msg::UInt8MultiAr
                 break;
             }
             size_t num_entries = expected_length / (1 + data_length);
-            dynamixel::GroupSyncWrite groupSyncWrite(port_handler_, packet_handler_, start_address, data_length);
             size_t index = 3;
+            dynamixel::GroupSyncWrite ttlWrite(port_handler_, packet_handler_, start_address, data_length);
+            dynamixel::GroupSyncWrite rsWrite(port_handler_, packet_handler_, start_address, data_length);
+            bool ttl_has_param = false;
+            bool rs_has_param = false;
+
             for (size_t i = 0; i < num_entries; i++) {
                 uint8_t id = msg->data[index++];
                 std::vector<uint8_t> param_data;
                 for (uint8_t j = 0; j < data_length; j++) {
                     param_data.push_back(msg->data[index++]);
                 }
-                if (!groupSyncWrite.addParam(id, param_data.data())) {
-                    RCLCPP_ERROR(this->get_logger(), "Failed to add param for SYNC_WRITE, ID: %d", id);
+                if (rs485_ids_.count(id)) {
+                    if (!rsWrite.addParam(id, param_data.data())) {
+                        RCLCPP_ERROR(this->get_logger(), "Failed to add RS485 param for SYNC_WRITE, ID: %d", id);
+                    }
+                    rs_has_param = true;
+                } else {
+                    if (!ttlWrite.addParam(id, param_data.data())) {
+                        RCLCPP_ERROR(this->get_logger(), "Failed to add TTL param for SYNC_WRITE, ID: %d", id);
+                    }
+                    ttl_has_param = true;
                 }
             }
-            int dxl_comm_result = groupSyncWrite.txPacket();
-            if (dxl_comm_result != COMM_SUCCESS) {
-                RCLCPP_ERROR(this->get_logger(), "SYNC_WRITE failed: %s", packet_handler_->getTxRxResult(dxl_comm_result));
-            } else {
-                RCLCPP_INFO(this->get_logger(), "SYNC_WRITE success.");
-                response_data.push_back(dxl_error);
-                publish_response(instr, response_data);
+
+            if (ttl_has_param) {
+                int result = ttlWrite.txPacket();
+                if (result != COMM_SUCCESS) {
+                    RCLCPP_ERROR(this->get_logger(), "SYNC_WRITE TTL failed: %s", packet_handler_->getTxRxResult(result));
+                }
             }
+
+            if (rs_has_param) {
+                int result = rsWrite.txPacket();
+                if (result != COMM_SUCCESS) {
+                    RCLCPP_ERROR(this->get_logger(), "SYNC_WRITE RS485 failed: %s", packet_handler_->getTxRxResult(result));
+                }
+            }
+
+            response_data.push_back(dxl_error);
+            publish_response(instr, response_data);
             break;
         }
         default:

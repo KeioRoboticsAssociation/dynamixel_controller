@@ -25,6 +25,8 @@ dynamixel_controller は、Dynamixel アクチュエータとの通信を行う�
 
 ・サンプル Python クライアント
 　- Python ノードからの命令送信例（SYNC_READ）および応答受信例を提供
+・バス設定
+　- `config/bus_config.yaml` で TTL と RS485 に接続されたモータ ID を指定可能
 
 【ビルド方法】
 
@@ -60,6 +62,11 @@ dynamixel_controller ノードは、実行可能ファイル "dynamixel_controll
 下記のコマンドで起動してください：
     ``` bash
      ros2 run dynamixel_controller dynamixel_controller_node
+    ```
+モータがTTL接続かRS485接続かを区別するために、パラメータファイルを使用してIDの割り当てを設定します。サンプルの`config/bus_config.yaml`を編集し、以下のようにノード起動時に読み込みます。
+
+    ``` bash
+    ros2 run dynamixel_controller dynamixel_controller_node --ros-args --params-file config/bus_config.yaml
     ```
 ＜Python クライアントの利用例＞
 下記のサンプルは、Python ノードから C++ ノードに対して命令を送信する例です。
