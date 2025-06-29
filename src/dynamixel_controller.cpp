@@ -95,6 +95,18 @@ DynamixelController::DynamixelController() : Node("dynamixel_controller") {
         rs485_ids_.insert(static_cast<uint8_t>(id));
     }
 
+    // Debug: Print loaded configuration
+    RCLCPP_INFO(this->get_logger(), "=== Bus Configuration Loaded ===");
+    RCLCPP_INFO(this->get_logger(), "TTL IDs: ");
+    for (auto id : ttl_ids_) {
+        RCLCPP_INFO(this->get_logger(), "  TTL ID: %d", id);
+    }
+    RCLCPP_INFO(this->get_logger(), "RS485 IDs: ");
+    for (auto id : rs485_ids_) {
+        RCLCPP_INFO(this->get_logger(), "  RS485 ID: %d", id);
+    }
+    RCLCPP_INFO(this->get_logger(), "================================");
+
     // ROS2 サブスクライバーの作成 (送信用命令を受け付ける)
     instruction_subscriber_ = this->create_subscription<std_msgs::msg::UInt8MultiArray>(
         "dynamixel_tx", 100,
