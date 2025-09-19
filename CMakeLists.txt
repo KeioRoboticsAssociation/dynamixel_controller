@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.16)
 project(dynamixel_controller)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -21,6 +21,8 @@ include_directories(
 # メッセージファイル設定
 set(msg_files
   "msg/DynamixelController.msg"
+  "msg/DynamixelCommand.msg"
+  "msg/DynamixelResponse.msg"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
